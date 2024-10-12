@@ -2,7 +2,7 @@ import fitz  # PyMuPDF
 import cv2
 import numpy as np
 import os
-from tkinter import Tk, filedialog, messagebox, StringVar, ttk, Canvas
+from tkinter import Tk, Label, Button, filedialog, messagebox, StringVar, ttk, Canvas, PhotoImage, CENTER
 import threading
 import subprocess
 import platform
@@ -14,14 +14,31 @@ from ttkthemes import ThemedTk
 from PIL import Image, ImageTk, ImageEnhance, ImageFilter
 import io
 import sys
-import easyocr  # Importar EasyOCR
 
-# Inicializar o leitor do EasyOCR com GPU habilitada
-reader = easyocr.Reader(['pt'], gpu=True)
+# Definir o TESSDATA_PREFIX corretamente antes de importar o pytesseract
+tessdata_prefix = r'C:/Program Files/Tesseract-OCR/tessdata/'
+os.environ['TESSDATA_PREFIX'] = tessdata_prefix
 
-# Variáveis globais para referência da imagem e canvas
-canvas_image = None
-img_reference = None
+import pytesseract
+pytesseract.pytesseract.tesseract_cmd = r'C:/Program Files/Tesseract-OCR/tesseract.exe'
+
+def test_tesseract_setup():
+    print("Testando configuração do Tesseract...")
+    try:
+        tessdata_prefix_env = os.environ.get('TESSDATA_PREFIX')
+        if not tessdata_prefix_env:
+            raise Exception("A variável de ambiente TESSDATA_PREFIX não está definida.")
+        if not os.path.isdir(tessdata_prefix_env):
+            raise Exception(f"O diretório especificado em TESSDATA_PREFIX não existe: {tessdata_prefix_env}")
+
+        print("Tesseract OCR configurado corretamente.")
+        tesseract_version = pytesseract.get_tesseract_version()
+        print(f"Versão: {tesseract_version}")
+        messagebox.showinfo("Tesseract OCR", f"Tesseract OCR está instalado corretamente.\nVersão: {tesseract_version}")
+    except Exception as e:
+        print(f"Erro ao inicializar o Tesseract OCR: {str(e)}")
+        messagebox.showerror("Erro Tesseract OCR", f"Erro ao inicializar o Tesseract OCR.\n{str(e)}")
+        sys.exit(1)
 
 def sanitize_filename(filename):
     print(f"Sanitizando nome do arquivo: {filename}")
@@ -29,7 +46,7 @@ def sanitize_filename(filename):
     print(f"Nome do arquivo sanitizado: {normalized_filename}")
     return normalized_filename
 
-def is_blank_or_noisy(image, white_threshold=230, pixel_threshold=0.99):
+def is_blank_or_noisy(image, white_threshold=215, pixel_threshold=0.98):
     print("Determinando se a página está em branco ou ruidosa...")
     if image is None:
         print("Imagem é None.")
@@ -40,94 +57,35 @@ def is_blank_or_noisy(image, white_threshold=230, pixel_threshold=0.99):
     print(f"Porcentagem de pixels brancos: {white_pixel_percentage}")
     return white_pixel_percentage > pixel_threshold, white_pixel_percentage
 
-def deskew_image(image):
-    """
-    Corrige a inclinação da imagem usando transformações de rotação.
-    """
-    image_cv = np.array(image)
-
-    # Remover dimensões unitárias, se houver
-    image_cv = np.squeeze(image_cv)
-
-    # Verificar se a imagem é em escala de cinza ou colorida
-    if len(image_cv.shape) == 2:
-        # Imagem já está em escala de cinza
-        gray = image_cv
-    elif len(image_cv.shape) == 3:
-        # Verificar o número de canais
-        if image_cv.shape[2] == 1:
-            # Imagem com um canal, remover a dimensão extra
-            gray = image_cv[:, :, 0]
-        else:
-            # Imagem colorida, converter para escala de cinza
-            gray = cv2.cvtColor(image_cv, cv2.COLOR_BGR2GRAY)
-    else:
-        raise ValueError("Formato de imagem não suportado")
-
-    # Verificar se há conteúdo para evitar erro na próxima etapa
-    coords = np.column_stack(np.where(gray < 255))
-    if coords.shape[0] == 0:
-        # Nenhum texto detectado, retornar a imagem original
-        return image
-
-    angle = cv2.minAreaRect(coords)[-1]
-    if angle < -45:
-        angle = -(90 + angle)
-    else:
-        angle = -angle
-    (h, w) = gray.shape[:2]
-    center = (w // 2, h // 2)
-    M = cv2.getRotationMatrix2D(center, angle, 1.0)
-    rotated = cv2.warpAffine(gray, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
-
-    return Image.fromarray(rotated)
-
 def perform_ocr_and_reclassify(image, min_text_length=2, is_blank=False):
-    print("Executando OCR com EasyOCR para verificar texto relevante...")
+    print("Executando OCR para verificar texto relevante...")
     try:
-        if image.mode != 'RGB':
-            image = image.convert('RGB')
-
-        # Aplicar pré-processamento, se desejado
-        # Por exemplo, aumentar o contraste ou remover ruído
-        # image = image.filter(ImageFilter.MedianFilter())
-        # enhancer = ImageEnhance.Contrast(image)
-        # image = enhancer.enhance(2.0)
-
-        image_np = np.array(image)
-
-        # Executar OCR usando GPU
-        result = reader.readtext(image_np)
-
-        # Concatenar os textos extraídos
-        text = ' '.join([res[1] for res in result])
-
+        with io.BytesIO() as output:
+            if is_blank:
+                image = image.resize((int(image.width * 2), int(image.height * 2)), Image.LANCZOS)
+                print("Aumentando DPI da imagem para 600 DPI.")
+                image = image.filter(ImageFilter.MedianFilter(size=3))  # Aplicando filtro de mediana para remover ruído
+                enhancer = ImageEnhance.Contrast(image)
+                image = enhancer.enhance(2.0)  # Aumentando contraste
+                sharpness = ImageEnhance.Sharpness(image)
+                image = sharpness.enhance(2.0)  # Aumentando nitidez
+                image.save(output, format="PNG", dpi=(600, 600))
+            else:
+                image.save(output, format="PNG")
+            output.seek(0)
+            with Image.open(output) as image_dpi:
+                enhancer = ImageEnhance.Contrast(image_dpi)
+                image_contrast = enhancer.enhance(2.0)
+                sharpness = ImageEnhance.Sharpness(image_contrast)
+                image_sharp = sharpness.enhance(2.0)
+                image_bw = image_sharp.convert('L').point(lambda x: 0 if x < 128 else 255, '1')
+                text = pytesseract.image_to_string(image_bw, lang='eng+por')
         cleaned_text = ''.join(text.split())
-        print(f"Texto extraído: {text}")
         print(f"Comprimento do texto extraído: {len(cleaned_text)}")
-        return (True, "OK") if len(cleaned_text) > min_text_length else (False, "Em branco após OCR")
-
-    except Exception as e:
+        return (True, "precisa de revisão") if len(cleaned_text) > min_text_length else (False, "Sem Texto")
+    except pytesseract.TesseractError as e:
         print(f"Erro OCR: {str(e)}")
         return False, "Erro OCR"
-
-def show_image_on_canvas(image):
-    global canvas_image, img_reference
-    img_width, img_height = image.size
-    canvas_width, canvas_height = canvas.winfo_width(), canvas.winfo_height()
-
-    scale_factor = min(canvas_width / img_width, canvas_height / img_height)
-    new_width = int(img_width * scale_factor)
-    new_height = int(img_height * scale_factor)
-    resized_image = image.resize((new_width, new_height))
-
-    img_reference = ImageTk.PhotoImage(resized_image)
-
-    x_pos = (canvas_width - new_width) // 2
-    y_pos = (canvas_height - new_height) // 2
-
-    canvas.delete("all")
-    canvas_image = canvas.create_image(x_pos, y_pos, anchor="nw", image=img_reference)
 
 def analyze_single_pdf(pdf_path, ws, total_pages_processed, total_pages, progress_var, progress_label, progress_bar):
     print(f"Analisando PDF: {pdf_path}")
@@ -145,35 +103,27 @@ def analyze_single_pdf(pdf_path, ws, total_pages_processed, total_pages, progres
 
                 with Image.open(io.BytesIO(image_bytes)) as img:
                     width, height = img.size
-                    # Refinamento no corte das bordas
-                    left = width * 0.05
+                    left = width * 0.10
                     top = height * 0.05
-                    right = width * 0.95
-                    bottom = height * 0.95
+                    right = width * 0.90
+                    bottom = height * 0.90
                     img = img.crop((left, top, right, bottom))
-                    print(f"Imagem recortada para remover bordas para a página {page_num + 1}")
+                    print(f"Imagem recortada para remover 10% das bordas em todos os lados para a página {page_num + 1}")
 
                     image_gray = img.convert('L')
                     image_np = np.array(image_gray)
                     print(f"Imagem convertida para escala de cinza e carregada em um array numpy para a página {page_num + 1}")
 
-                    # Mostrar a imagem no canvas
-                    show_image_on_canvas(img)
-
                 is_blank, white_pixel_percentage = is_blank_or_noisy(image_np)
-                status = "OK"
+                status = "Em branco ou ruidosa" if is_blank else "OK"
                 ocr_text = "Não"
 
                 if is_blank:
                     with Image.open(io.BytesIO(image_bytes)) as img:
                         img = img.crop((left, top, right, bottom))
                         relevant_text_found, text_or_revision = perform_ocr_and_reclassify(img, is_blank=is_blank)
-                        if relevant_text_found:
-                            status = "OK"
-                            ocr_text = "Sim"
-                        else:
-                            status = "Em branco após OCR"
-                            ocr_text = "Não"
+                        status = text_or_revision if relevant_text_found else "Em branco após OCR"
+                        ocr_text = "Sim" if relevant_text_found else "Não"
 
                 print(f"Status da página {page_num + 1}: {status}, Porcentagem de Pixels Brancos: {white_pixel_percentage:.2%}")
                 ws.append([pdf_name, page_num + 1, status, f"{white_pixel_percentage:.2%}", ocr_text])
@@ -286,7 +236,6 @@ def create_gui():
     window = ThemedTk(theme="breeze")
     window.title("PDF Analyzer")
     window.geometry("800x600")
-    window.configure(bg="blue")
 
     main_frame = ttk.Frame(window, padding="20")
     main_frame.pack(fill='both', expand=True)
@@ -320,4 +269,8 @@ def create_gui():
 
 if __name__ == "__main__":
     print("Inicializando Tkinter...")
+    root = Tk()
+    root.withdraw()
+    test_tesseract_setup()
+    root.destroy()
     create_gui()
