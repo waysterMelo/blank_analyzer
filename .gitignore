@@ -1,0 +1,96 @@
+# -----------------------------------
+# Byte-compiled / optimized / DLL files
+# -----------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+
+# -----------------------------------
+# C extensions
+# -----------------------------------
+*.so
+
+# -----------------------------------
+# Distribution / packaging
+# -----------------------------------
+build/
+dist/
+*.egg-info/
+*.egg
+
+# -----------------------------------
+# Virtual environments
+# -----------------------------------
+# Ignorar pastas comuns de ambientes virtuais
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# -----------------------------------
+# PyCharm
+# -----------------------------------
+# Configurações específicas do PyCharm
+.idea/
+
+# -----------------------------------
+# Visual Studio Code
+# -----------------------------------
+.vscode/
+
+# -----------------------------------
+# OS-specific files
+# -----------------------------------
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Linux
+*~
+
+# -----------------------------------
+# Logs
+# -----------------------------------
+*.log
+
+# -----------------------------------
+# Temporary files
+# -----------------------------------
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# -----------------------------------
+# Jupyter Notebook
+# -----------------------------------
+.ipynb_checkpoints/
+
+# -----------------------------------
+# Reports
+# -----------------------------------
+# Relatórios gerados pelo aplicativo
+analysis_report_*.xlsx
+
+# -----------------------------------
+# Tesseract OCR tessdata (Opcional)
+# -----------------------------------
+# Se você NÃO deseja versionar a pasta tessdata, descomente a linha abaixo
+# tessdata/
+
+# -----------------------------------
+# Outros arquivos e pastas a serem ignorados
+# -----------------------------------
+*.coverage
+.coverage.*
+.cache/
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/
