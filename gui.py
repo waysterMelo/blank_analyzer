@@ -29,7 +29,7 @@ class PDFAnalyzerGUI:
         self.timer_label = None  # Label do timer
         self.window = ThemedTk(theme="arc")
         self.window.title("Analisador de PDFs - Digitalizados")
-        self.window.geometry("950x750")  # Aumentei a altura para acomodar melhor o canvas
+        self.window.state("zoomed")  # Aumentei a altura para acomodar melhor o canvas
 
         self.directory = None
         self.analyzer = PDFAnalyzer()
@@ -230,7 +230,3 @@ class PDFAnalyzerGUI:
         except Exception as e:
             print(f"Erro ao abrir relatório: {e}")
             messagebox.showerror("Erro ao abrir relatório", f"Não foi possível abrir o relatório: {str(e)}")
-
-
-if __name__ == "__main__":
-    PDFAnalyzerGUI()
