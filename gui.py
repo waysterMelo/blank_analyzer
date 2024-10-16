@@ -28,18 +28,18 @@ class PDFAnalyzerGUI:
         self.select_label = None
         self.window = ThemedTk(theme="arc")
         self.window.title("Analisador de PDFs - Digitalizados")
-        self.window.geometry("900x650")
+        self.window.geometry("900x750")  # Aumentei a altura para acomodar melhor o canvas
 
         self.directory = None
         self.analyzer = PDFAnalyzer()
         self.report_generator = ReportGenerator()
 
-        self.progress_queue = queue.Queue()  # Inicializar a fila
+        self.progress_queue = queue.Queue()
 
         self.setup_style()
         self.create_widgets()
 
-        self.process_queue()  # Iniciar o processamento da fila
+        self.process_queue()
 
         self.window.mainloop()
 
@@ -48,13 +48,7 @@ class PDFAnalyzerGUI:
         style.configure("TFrame", background="#2B3E50")
         style.configure("TLabel", background="#2B3E50", foreground="white", font=("Segoe UI", 10))
         style.configure("Header.TLabel", foreground="#ECECEC", font=("Segoe UI", 12, "bold"))
-        style.configure(
-            "TButton",
-            background="#374956",
-            foreground="#000000",
-            font=("Segoe UI", 10, "bold"),
-            padding=10
-        )
+        style.configure("TButton", background="#374956", foreground="#000000", font=("Segoe UI", 10, "bold"), padding=10)
         style.map("TButton", background=[("active", "#516B7F")], relief=[("pressed", "ridge"), ("!pressed", "flat")])
 
     def create_widgets(self):
@@ -73,16 +67,13 @@ class PDFAnalyzerGUI:
         self.analyze_button = ttk.Button(main_frame, text="Iniciar Análise", state="disabled", command=self.start_analysis, width=25)
         self.analyze_button.pack(pady=10)
 
-        # Progress
         self.progress_var = StringVar()
         self.progress_var.set("0")
         self.progress_label = ttk.Label(main_frame, text="Progresso: 0%", style="TLabel")
         self.progress_label.pack(pady=10)
-        self.progress_bar = ttk.Progressbar(main_frame, orient="horizontal", length=500, mode="determinate",
-                                           variable=self.progress_var)
+        self.progress_bar = ttk.Progressbar(main_frame, orient="horizontal", length=500, mode="determinate", variable=self.progress_var)
         self.progress_bar.pack(pady=(5, 20))
 
-        # Labels for page counts
         self.pages_blank_label = ttk.Label(main_frame, text="Páginas brancas: 0")
         self.pages_blank_label.pack(pady=(0, 5))
         self.pages_ocr_analyzed_label = ttk.Label(main_frame, text="Análise forçada: 0")
@@ -93,7 +84,6 @@ class PDFAnalyzerGUI:
         self.open_folder_button = ttk.Button(main_frame, text="Abrir Pasta do Relatório", command=self.open_folder, width=25)
         self.open_folder_button.pack(pady=15)
 
-        # Canvas for image display
         canvas_frame = ttk.Frame(main_frame, padding="10", borderwidth=2, relief="ridge", style="TFrame")
         canvas_frame.pack(pady=20, expand=True, fill="both")
 
@@ -101,29 +91,20 @@ class PDFAnalyzerGUI:
         self.canvas.pack(expand=True, fill="both")
 
     def select_directory(self):
-        print("Selecionando diretório...")
         self.directory = filedialog.askdirectory()
         if self.directory:
-            print(f"Diretório selecionado: {self.directory}")
             self.select_label.config(text=f"Diretório Selecionado: {self.directory}")
             self.analyze_button.config(state="normal")
 
     def start_analysis(self):
         if self.directory:
-            print("Iniciando análise...")
             self.analyze_button.config(state="disabled")
-            threading.Thread(target=self.run_analysis_thread).start()
+            threading.Thread(target=self.run_analysis_thread, daemon=True).start()
 
     def run_analysis_thread(self):
-        print(f"Executando análise em diretório: {self.directory}")
-
-        # Generate timestamp for report name
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         output_xlsx = os.path.join(self.directory, f"analysis_report_{timestamp}.xlsx")
-
         self.analyze_pdfs_in_directory(output_xlsx)
-        # Removido: self.report_generator.finalize(output_xlsx)
-        # Removido: self.open_report(output_xlsx)  # Agora é tratado via fila
 
     def analyze_pdfs_in_directory(self, output_xlsx):
         pdf_files = [os.path.join(self.directory, f) for f in os.listdir(self.directory) if f.lower().endswith('.pdf')]
@@ -131,52 +112,43 @@ class PDFAnalyzerGUI:
         total_pages_processed = 0
 
         for pdf_file in pdf_files:
-            print(f"Analisando arquivo PDF: {pdf_file}")
             pdf_name = os.path.basename(pdf_file)
-
             with fitz.open(pdf_file) as pdf_document:
                 for page_num in range(pdf_document.page_count):
-                    print(f"Analisando página {page_num + 1} de {pdf_document.page_count} do arquivo {pdf_name}")
                     page = pdf_document.load_page(page_num)
                     pix = page.get_pixmap()
                     img = Image.open(io.BytesIO(pix.tobytes("png")))
 
-                    # Analisar a página
                     status, white_pixel_percentage, ocr_performed, extracted_text = self.analyzer.analyze_page(img)
+                    self.report_generator.add_record(pdf_name, page_num + 1, status, white_pixel_percentage, ocr_performed, extracted_text)
 
-                    # Adicionar registro ao relatório
-                    self.report_generator.add_record(
-                        pdf_name,
-                        page_num + 1,
-                        status,
-                        white_pixel_percentage,
-                        ocr_performed,
-                        extracted_text
-                    )
-
-                    # Atualizar contadores na GUI
                     self.update_labels()
-
-                    # Incrementar páginas processadas
                     total_pages_processed += 1
                     progress_percentage = (total_pages_processed / total_pages) * 100
-
-                    # Enviar atualização de progresso para a fila
                     self.progress_queue.put(progress_percentage)
 
-        # Finalizar o relatório
+                    # Enviar a imagem para ser exibida no canvas
+                    self.progress_queue.put(("image", img))
+
         self.report_generator.finalize(output_xlsx)
-        self.progress_queue.put("DONE")  # Sinalizar conclusão
+        if not os.path.exists(output_xlsx):
+            print("Erro: O relatório não foi criado.")
+            return
+        self.progress_queue.put("DONE")
 
     def process_queue(self):
         try:
             while True:
                 message = self.progress_queue.get_nowait()
-                if isinstance(message, float) or isinstance(message, int):
+                if isinstance(message, tuple) and message[0] == "image":
+                    image = message[1]
+                    self.display_image_on_canvas(image)
+                elif isinstance(message, float) or isinstance(message, int):
                     self.update_progress(message)
                 elif message == "DONE":
                     self.analyze_button.config(state="normal")
-                    self.open_report(os.path.join(self.directory, f"analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx"))
+                    # Exibir mensagem de confirmação ao usuário
+                    messagebox.showinfo("Análise Concluída", "A análise foi concluída e o relatório foi gerado com sucesso!")
         except queue.Empty:
             pass
         self.window.after(100, self.process_queue)
@@ -190,38 +162,47 @@ class PDFAnalyzerGUI:
     def update_labels(self):
         self.pages_blank_label.config(text=f"Páginas brancas: {self.analyzer.pages_blank_count}")
         self.pages_ocr_analyzed_label.config(text=f"Análise forçada: {self.analyzer.pages_ocr_analyzed_count}")
-        self.pages_blank_after_ocr_label.config(
-            text=f"Página em Branco após reanálise: {self.analyzer.pages_blank_after_ocr_count}"
-        )
+        self.pages_blank_after_ocr_label.config(text=f"Página em Branco após reanálise: {self.analyzer.pages_blank_after_ocr_count}")
 
     def display_image_on_canvas(self, image):
         print("Exibindo imagem no canvas...")
+
+        # Obtenha dimensões do canvas e da imagem
         canvas_width = self.canvas.winfo_width()
         canvas_height = self.canvas.winfo_height()
         img_width, img_height = image.size
+
+        # Verifique se o canvas possui dimensões válidas
+        if canvas_width == 1 or canvas_height == 1:
+            # Se o canvas não tiver dimensões válidas, defina tamanhos padrão temporários
+            canvas_width, canvas_height = 800, 600
+            self.canvas.config(width=canvas_width, height=canvas_height)
 
         try:
             resample_filter = Image.Resampling.LANCZOS
         except AttributeError:
             resample_filter = Image.LANCZOS
 
-        # Resize image to fit canvas
+        # Redimensiona a imagem para ajustar ao canvas, mantendo a proporção
         ratio = min(canvas_width / img_width, canvas_height / img_height)
         new_size = (int(img_width * ratio), int(img_height * ratio))
-        image = image.resize(new_size, resample_filter)
+        image = image.resize(new_size, resample=resample_filter)
+
+        # Centraliza a imagem no canvas
         x = (canvas_width - new_size[0]) // 2
         y = (canvas_height - new_size[1]) // 2
         print(f"Posicionando imagem no canvas: ({x}, {y})")
 
+        # Converter para um objeto PhotoImage para exibição no Tkinter
         tk_image = ImageTk.PhotoImage(image)
 
+        # Limpa o canvas e adiciona a imagem na posição centralizada
         self.canvas.delete("all")
         self.canvas.create_image(x, y, anchor="nw", image=tk_image)
-        self.canvas.image = tk_image  # Prevent garbage collection
+        self.canvas.image = tk_image  # Evita que o Python faça coleta de lixo da imagem
 
     def open_folder(self):
         if self.directory:
-            print(f"Abrindo pasta do diretório: {self.directory}")
             try:
                 if platform.system() == "Windows":
                     os.startfile(self.directory)
@@ -230,8 +211,8 @@ class PDFAnalyzerGUI:
                 elif platform.system() == "Linux":
                     subprocess.Popen(["xdg-open", self.directory])
             except Exception as e:
-                print(f"Erro ao abrir pasta: {e}")
                 messagebox.showerror("Erro", f"Não foi possível abrir a pasta: {str(e)}")
+
 
     def open_report(self, file_path):
         """

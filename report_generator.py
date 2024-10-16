@@ -1,49 +1,80 @@
-# report.py
+# report_generator.py
+
 import os
 from openpyxl import Workbook
 from openpyxl.worksheet.table import Table, TableStyleInfo
+from openpyxl.utils import get_column_letter
+
 
 class ReportGenerator:
     def __init__(self):
+        print("Inicializando ReportGenerator...")
         self.wb = Workbook()
         self.ws = self.wb.active
         self.ws.title = "PDF Analysis Report"
-        self.ws.append(["Arquivo PDF", "Página", "Status", "Porcentagem de Pixels Brancos", "OCR Realizado", "Texto Extraído"])
+        self.headers = ["Arquivo PDF", "Página", "Status", "Porcentagem de Pixels Brancos", "OCR Realizado",
+                        "Texto Extraído"]
+        self.ws.append(self.headers)
+        print("Worksheet inicializada com cabeçalhos.")
 
     def add_record(self, pdf_name, page_num, status, white_pixel_percentage, ocr_performed, extracted_text):
-        self.ws.append([
-            pdf_name,
-            page_num,
-            status,
-            f"{white_pixel_percentage:.2%}",
-            "Sim" if ocr_performed else "Não",
-            extracted_text
-        ])
+        try:
+            print(f"Adicionando registro: PDF Name={pdf_name}, Página={page_num}, Status={status}")
+            self.ws.append([
+                pdf_name,
+                page_num,
+                status,
+                f"{white_pixel_percentage:.2%}",
+                "Sim" if ocr_performed else "Não",
+                extracted_text[:100]
+            ])
+            print("Registro adicionado com sucesso.")
+        except Exception as e:
+            print(f"Erro ao adicionar registro: {e}")
 
     def finalize(self, output_path):
-        # Create table with style
-        tab = Table(displayName="PDFAnalysisTable", ref=f"A1:F{self.ws.max_row}")
-        style = TableStyleInfo(
-            name="TableStyleMedium9",
-            showFirstColumn=False,
-            showLastColumn=False,
-            showRowStripes=True,
-            showColumnStripes=True
-        )
-        tab.tableStyleInfo = style
-        self.ws.add_table(tab)
+        print("Finalizando o relatório...")
 
-        # Adjust column widths
-        for col in self.ws.columns:
-            max_length = 0
-            col_letter = col[0].column_letter
-            for cell in col:
-                try:
+        # Garantir que o diretório de destino existe
+        dir_path = os.path.dirname(output_path)
+        if not os.path.exists(dir_path):
+            try:
+                os.makedirs(dir_path)
+                print(f"Diretório criado: {dir_path}")
+            except OSError as e:
+                print(f"Erro ao criar o diretório: {e}")
+                return
+
+        # Estilo da tabela e ajuste das colunas
+        try:
+            max_row = self.ws.max_row
+            max_col = self.ws.max_column
+            table_ref = f"A1:{get_column_letter(max_col)}{max_row}"
+            tab = Table(displayName="PDFAnalysisTable", ref=table_ref)
+            style = TableStyleInfo(
+                name="TableStyleMedium9",
+                showFirstColumn=False,
+                showLastColumn=False,
+                showRowStripes=True,
+                showColumnStripes=True
+            )
+            tab.tableStyleInfo = style
+            self.ws.add_table(tab)
+            print("Tabela criada com estilo aplicado.")
+
+            for col in self.ws.columns:
+                max_length = 0
+                column = col[0].column
+                column_letter = get_column_letter(column)
+                for cell in col:
                     max_length = max(max_length, len(str(cell.value)))
-                except:
-                    pass
-            adjusted_width = (max_length + 2)
-            self.ws.column_dimensions[col_letter].width = adjusted_width
+                adjusted_width = max_length + 2
+                self.ws.column_dimensions[column_letter].width = adjusted_width
+                print(f"Largura da coluna {column_letter} ajustada para {adjusted_width}.")
 
-        # Save workbook
-        self.wb.save(output_path)
+            # Salvar o relatório
+            self.wb.save(output_path)
+            print(f"Relatório salvo em: {output_path}")
+
+        except Exception as e:
+            print(f"Erro ao salvar o relatório: {e}")
