@@ -8,7 +8,7 @@ import io
 import pytesseract
 
 class PDFAnalyzer:
-    def __init__(self, min_text_length=10, pixel_threshold=0.985):
+    def __init__(self, min_text_length=10, pixel_threshold=0.98):
         self.min_text_length = min_text_length
         self.pixel_threshold = pixel_threshold
         self.pages_blank_count = 0
@@ -125,23 +125,22 @@ class PDFAnalyzer:
         is_blank, white_pixel_percentage, cropped_img = self.is_blank_or_noisy(img)
         extracted_text = ""
         ocr_performed = False
+        status = "OK"  # Define o status padrão como "OK" caso a página não seja em branco
 
         if is_blank:
             self.pages_blank_count += 1
             ocr_successful, extracted_text = self.perform_ocr_and_reclassify(cropped_img)
             ocr_performed = True
 
-            # Classification based on OCR results
-            if (ocr_successful or len(extracted_text) >= 15) and white_pixel_percentage <= 0.995:
+            # Classificação com base nos resultados do OCR
+            if (ocr_successful or len(extracted_text) >= 40) and white_pixel_percentage <= self.pixel_threshold:
                 status = "Identificado conteúdo após reanálise"
                 self.pages_ocr_analyzed_count += 1
-            elif len(extracted_text) >= 15 and white_pixel_percentage > 0.995:
-                status = "Página em branco"
+            elif len(extracted_text) >= 15 and white_pixel_percentage >= self.pixel_threshold:
+                status = "Página em branco com texto irrelevante"
                 self.pages_blank_after_ocr_count += 1
             else:
                 status = "Página em branco"
                 self.pages_blank_after_ocr_count += 1
-        else:
-            status = "OK"
 
         return status, white_pixel_percentage, ocr_performed, extracted_text
