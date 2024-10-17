@@ -1,31 +1,46 @@
-# analyzer.py
-import fitz  # PyMuPDF
 import cv2
 import numpy as np
 import re
 from PIL import Image, ImageEnhance, ImageFilter
 import io
 import pytesseract
+from spellchecker import SpellChecker
+from difflib import SequenceMatcher
+
 
 class PDFAnalyzer:
-    def __init__(self, min_text_length=10, pixel_threshold=0.97):
-        # Initialize the minimum text length for OCR success and the pixel threshold for blank detection
+    def __init__(self, min_text_length=10, pixel_threshold=0.985, language='eng+por'):
+        """
+        Inicializa o analisador com parâmetros para OCR e métricas.
+
+        Args:
+            min_text_length (int): Comprimento mínimo do texto para considerar OCR bem-sucedido.
+            pixel_threshold (float): Limite de proporção de pixels brancos para considerar a página em branco.
+            language (str): Idiomas para o Tesseract OCR.
+        """
         self.min_text_length = min_text_length
         self.pixel_threshold = pixel_threshold
-        # Counters to keep track of various page statuses
+        self.language = language
+        # Contadores para rastrear vários status de página
         self.pages_blank_count = 0
         self.pages_blank_after_ocr_count = 0
         self.pages_ocr_analyzed_count = 0
+        self.total_characters = 0
+        self.correct_characters = 0
+        self.total_words = 0
+        self.correct_words = 0
+        # Inicializa o corretor ortográfico
+        self.spell = SpellChecker(language='pt')  # Ajuste o idioma conforme necessário
 
     def is_blank_or_noisy(self, image):
         """
-        Determines if the image is blank or noisy.
-        Returns:
+        Determina se a imagem é em branco ou ruidosa.
+        Retorna:
             is_blank (bool), white_pixel_percentage (float), cropped_image (PIL.Image)
         """
         print("Verificando se a imagem é em branco ou ruidosa...")
 
-        # Crop 5% from each side to remove potential noisy borders
+        # Recorta 5% de cada lado para remover bordas potencialmente ruidosas
         width, height = image.size
         crop_percent = 0.05
         left = int(width * crop_percent)
@@ -33,27 +48,13 @@ class PDFAnalyzer:
         cropped_image = image.crop((left, 0, right, height))
         print(f"Imagem cortada para remover bordas: {left}px à {right}px")
 
-        # Convert the cropped image to grayscale
+        # Converte a imagem recortada para escala de cinza
         gray_image = cv2.cvtColor(np.array(cropped_image), cv2.COLOR_RGB2GRAY)
         print("Imagem convertida para escala de cinza.")
 
-        # Apply histogram equalization to enhance contrast
-        equalized_image = cv2.equalizeHist(gray_image)
-        print("Equalização de histograma aplicada para aumentar o contraste.")
-
-        # Apply Gaussian Blur to further reduce noise
-        blurred_image = cv2.GaussianBlur(equalized_image, (5, 5), 0)
-        print("Desfoque Gaussiano aplicado para reduzir ruídos.")
-
-        # Use morphological operations to remove remaining noise
-        kernel = np.ones((3, 3), np.uint8)
-        morph_image = cv2.morphologyEx(blurred_image, cv2.MORPH_CLOSE, kernel, iterations=2)
-        morph_image = cv2.morphologyEx(morph_image, cv2.MORPH_OPEN, kernel, iterations=1)
-        print("Operações morfológicas aplicadas para remover ruídos.")
-
-        # Apply adaptive thresholding to binarize the image
+        # Aplica limiarização adaptativa para binarizar a imagem
         binary_image = cv2.adaptiveThreshold(
-            morph_image, 255,
+            gray_image, 255,
             cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
             cv2.THRESH_BINARY,
             blockSize=15,
@@ -61,11 +62,11 @@ class PDFAnalyzer:
         )
         print("Binarização adaptativa aplicada.")
 
-        # Calculate the percentage of white pixels in the binarized image
+        # Calcula a porcentagem de pixels brancos na imagem binarizada
         white_pixel_percentage = np.mean(binary_image == 255)
         print(f"Proporção de pixels brancos: {white_pixel_percentage:.2%}")
 
-        # Determine if the page is considered blank based on the white pixel percentage
+        # Determina se a página é considerada em branco com base na porcentagem de pixels brancos
         is_blank = white_pixel_percentage >= self.pixel_threshold
         print(f"Imagem é em branco: {is_blank}")
 
@@ -73,101 +74,106 @@ class PDFAnalyzer:
 
     def perform_ocr_and_reclassify(self, cropped_image):
         """
-        Performs OCR on the cropped image.
-        Returns:
+        Realiza OCR na imagem recortada.
+        Retorna:
             ocr_successful (bool), cleaned_text (str)
         """
         print("Iniciando o processo de OCR e reclassificação...")
 
         try:
-            # Apply median filter to reduce noise in the image
+            # Aplica filtro mediano para reduzir o ruído na imagem
             cropped_image = cropped_image.filter(ImageFilter.MedianFilter(size=3))
             print("Filtro mediano aplicado para reduzir ruído.")
 
-            # Enhance contrast and sharpness to improve OCR accuracy
+            # Aumenta o contraste e a nitidez para melhorar a precisão do OCR
             cropped_image = ImageEnhance.Contrast(cropped_image).enhance(3.0)
             print("Contraste da imagem aumentado.")
             cropped_image = ImageEnhance.Sharpness(cropped_image).enhance(2.5)
             print("Nitidez da imagem aumentada.")
 
-            # Apply additional histogram equalization for better contrast
-            image_np = np.array(cropped_image.convert('L'))
-            image_eq = cv2.equalizeHist(image_np)
-            cropped_image = Image.fromarray(image_eq)
-            print("Equalização de histograma adicional aplicada.")
-
-            # Adjust DPI and convert to black and white for better OCR results
+            # Ajusta o DPI e converte para preto e branco para melhores resultados de OCR
             with io.BytesIO() as output:
                 cropped_image.save(output, format="PNG", dpi=(600, 600))
                 output.seek(0)
                 with Image.open(output) as image_dpi:
                     image_bw = image_dpi.convert('L')
-                    image_bw = ImageEnhance.Contrast(image_bw).enhance(2.5)
-                    # Convert image to binary (black and white) using a threshold
+                    image_bw = ImageEnhance.Contrast(image_bw).enhance(2.0)
+                    # Converte a imagem para binária (preto e branco) usando um limiar
                     image_bw = image_bw.point(lambda x: 0 if x < 140 else 255, '1')
                     print("Imagem convertida para preto e branco para OCR.")
-                    # Tesseract configuration for OCR
+                    # Configuração do Tesseract para OCR
                     custom_config = r'--oem 3 --psm 6'
-                    text = pytesseract.image_to_string(image_bw, lang='eng+por', config=custom_config)
+                    text = pytesseract.image_to_string(image_bw, lang=self.language, config=custom_config)
+                    print("OCR realizado com Tesseract.")
 
-            # Clean the extracted text by removing non-alphanumeric characters and extra spaces
-            text = re.sub(r'[^A-Za-z0-9À-ÿ]', ' ', text)
-            cleaned_text = re.sub(r'\s+', '', text)
-            print(f"Texto extraído pelo OCR sem espaços: {cleaned_text[:50]}... (truncado)" if len(
-                cleaned_text) > 50 else f"Texto extraído pelo OCR sem espaços: {cleaned_text}")
+            # Limpa o texto extraído removendo caracteres indesejados, mas preserva espaços para correção
+            text = re.sub(r'[^A-Za-z0-9À-ÿ\s]', ' ', text)
+            # Substitui múltiplos espaços por um único espaço
+            text = re.sub(r'\s+', ' ', text).strip()
+            print(f"Texto extraído pelo OCR: {text[:50]}... (truncado)" if len(
+                text) > 50 else f"Texto extraído pelo OCR: {text}")
 
-            # Determine if OCR was successful based on the length of the cleaned text
-            ocr_successful = len(cleaned_text) >= self.min_text_length
-            return ocr_successful, cleaned_text
+            # Realiza correção ortográfica
+            corrected_text = self.correct_spelling(text)
+            print(f"Texto após correção ortográfica: {corrected_text[:50]}... (truncado)" if len(
+                corrected_text) > 50 else f"Texto após correção ortográfica: {corrected_text}")
+
+            # Determina se o OCR foi bem-sucedido com base no comprimento do texto limpo
+            ocr_successful = len(corrected_text) >= self.min_text_length
+            return ocr_successful, corrected_text
 
         except pytesseract.TesseractError as e:
             print(f"Erro no OCR: {e}")
             return False, ""
 
-    def analyze_page(self, img):
+    def correct_spelling(self, text):
         """
-        Analyzes a single PDF page image.
-        Returns:
+        Corrige erros ortográficos no texto utilizando SpellChecker.
+        """
+        words = text.split()
+        corrected_words = []
+        for word in words:
+            # Verifica se a palavra está correta
+            if word.lower() in self.spell:
+                corrected_words.append(word)
+            else:
+                # Sugere correções
+                correction = self.spell.correction(word)
+                if correction:
+                    corrected_words.append(correction)
+                else:
+                    corrected_words.append(word)
+        corrected_text = ' '.join(corrected_words)
+        return corrected_text
+
+    def analyze_page(self, img, ground_truth_text=None):
+        """
+        Analisa a imagem de uma única página do PDF.
+        Retorna:
             status (str), white_pixel_percentage (float), ocr_performed (bool), extracted_text (str)
         """
-        # Check if the page is blank or noisy
+        # Verifica se a página é em branco ou ruidosa
         is_blank, white_pixel_percentage, cropped_img = self.is_blank_or_noisy(img)
         extracted_text = ""
         ocr_performed = False
-        status = "OK"  # Default status if the page is not blank
+        status = "OK"  # Status padrão se a página não for em branco
 
-        if is_blank:
-            # Increment the blank page counter
+        if white_pixel_percentage > 0.98:
+            # Se a proporção de pixels brancos for maior que 98%, marca como "Blank"
+            status = "Blank"
             self.pages_blank_count += 1
-            # Perform OCR on the cropped image to reclassify the page
+
+            # Realiza OCR na imagem recortada para tentar reclassificar a página
             ocr_successful, extracted_text = self.perform_ocr_and_reclassify(cropped_img)
             ocr_performed = True
 
-            # Get the number of characters from the extracted text
-            quantidade_caracteres = len(extracted_text)
-
-            # Classification based on OCR results
-            if quantidade_caracteres >= 50:
-                # If there are 50 or more characters, consider the page as having content
-                status = "OK"
+            # Se o OCR detectar texto relevante, marca como "OK after OCR"
+            if ocr_successful:
+                status = "OK after OCR"
                 self.pages_ocr_analyzed_count += 1
-            elif (ocr_successful or quantidade_caracteres >= 20) and white_pixel_percentage <= self.pixel_threshold:
-                # If OCR was successful or there are 20 or more characters, classify as having content after reanalysis
-                status = "Identificado conteúdo após reanálise"
-                self.pages_ocr_analyzed_count += 1
-            elif 10 <= quantidade_caracteres < 20 and 0.98 <= white_pixel_percentage < 0.99:
-                # If there are at least 10 characters and the percentage of white pixels is between 98% and 99%, mark as needing attention
-                status = "Precisa de Atenção"
-                # Add logic to highlight in the report, e.g., marking as red
-                # This part is for illustration and should be integrated with reporting logic
-                print("Marcando coluna como vermelha no relatório.")
-            elif quantidade_caracteres <= 15 and white_pixel_percentage >= self.pixel_threshold:
-                # If there are 15 or fewer characters and a high percentage of white pixels, classify as blank with irrelevant text
-                status = "Página em branco após reanálise"
-                self.pages_blank_after_ocr_count += 1
             else:
-                # Otherwise, classify as blank
-                status = "Página em branco"
+                # Caso contrário, marca como "Blank after OCR"
+                status = "Blank after OCR"
                 self.pages_blank_after_ocr_count += 1
 
         return status, white_pixel_percentage, ocr_performed, extracted_text
