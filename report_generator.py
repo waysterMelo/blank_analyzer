@@ -1,5 +1,3 @@
-# report_generator.py
-
 import os
 from openpyxl import Workbook
 from openpyxl.worksheet.table import Table, TableStyleInfo
@@ -27,13 +25,16 @@ class ReportGenerator:
                 f"{white_pixel_percentage:.2%}"
             ]
             self.ws.append(row)
+            print(f"Linha adicionada na planilha: {row}")
 
             # Highlight row in red if the status is "Precisa de Atenção"
             if status == "Precisa de Atenção":
                 print("Status 'Precisa de Atenção' detectado. Destacando a linha em vermelho.")
                 fill = PatternFill(start_color="FF0000", end_color="FF0000", fill_type="solid")
                 for col_idx in range(1, len(row) + 1):
-                    self.ws.cell(row=self.ws.max_row, column=col_idx).fill = fill
+                    cell = self.ws.cell(row=self.ws.max_row, column=col_idx)
+                    cell.fill = fill
+                    print(f"Célula {cell.coordinate} destacada em vermelho.")
 
             print("Registro adicionado com sucesso.")
         except Exception as e:
@@ -76,12 +77,15 @@ class ReportGenerator:
                 column_letter = get_column_letter(column)
                 print(f"Ajustando largura da coluna {column_letter}...")
                 for cell in col:
-                    max_length = max(max_length, len(str(cell.value)))
+                    cell_value_length = len(str(cell.value))
+                    print(f"Célula {cell.coordinate} valor: '{cell.value}', comprimento: {cell_value_length}")
+                    max_length = max(max_length, cell_value_length)
                 adjusted_width = max_length + 2
                 self.ws.column_dimensions[column_letter].width = adjusted_width
                 print(f"Largura da coluna {column_letter} ajustada para {adjusted_width}.")
 
             # Salvar o relatório
+            print(f"Salvando o relatório no caminho: {output_path}")
             self.wb.save(output_path)
             print(f"Relatório salvo em: {output_path}")
 

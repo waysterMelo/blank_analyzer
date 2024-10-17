@@ -257,9 +257,24 @@ class PDFAnalyzerGUI:
             except Exception as e:
                 messagebox.showerror("Erro", f"Não foi possível abrir a pasta: {str(e)}")
 
-    # Função para abrir a tela de análises pendentes
     def open_analysis_screen(self):
-        # Caminho do relatório de análise (substitua pelo caminho apropriado)
-        analysis_report_path = os.path.join(self.directory, f"analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+        # Verifica se um diretório foi selecionado
+        if not self.directory:
+            messagebox.showerror("Erro", "Nenhum diretório selecionado.")
+            return
+
+        # Encontra o arquivo de relatório mais recente com o padrão analysis_report_YYYYMMDD_HHMMSS.xlsx
+        report_files = [f for f in os.listdir(self.directory) if
+                        f.startswith("analysis_report_") and f.endswith(".xlsx")]
+
+        if not report_files:
+            messagebox.showerror("Erro", "Nenhum relatório de análise encontrado.")
+            return
+
+        # Modificado para lidar com diferentes tamanhos de strings antes do timestamp
+        report_files.sort(
+            key=lambda x: datetime.strptime(x.replace("analysis_report_", "").replace(".xlsx", ""), "%Y%m%d_%H%M%S"), reverse=True)
+        analysis_report_path = os.path.join(self.directory, report_files[0])
+
         # Cria a tela de análises pendentes
         AnalysisScreen(self.window, analysis_report_path)
