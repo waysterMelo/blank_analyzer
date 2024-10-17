@@ -1,7 +1,7 @@
 import os
 import platform
 import subprocess
-from tkinter import Toplevel, Listbox, Button, messagebox, filedialog
+from tkinter import Toplevel, Listbox, Button, messagebox, filedialog, ttk
 from ttkthemes import ThemedTk
 import pandas as pd
 
@@ -12,8 +12,14 @@ class AnalysisScreen:
         # Cria uma nova janela filha
         self.window = Toplevel(master)
         self.window.title("Análises Pendentes")
-        self.window.geometry("600x400")
+        self.window.state('zoomed')
         self.window.configure(bg="#2B3E50")
+
+        # Configurações de estilo
+        style = ttk.Style(self.window)
+        style.configure("TFrame", background="#2B3E50")
+        style.configure("TLabel", background="#2B3E50", foreground="white", font=("Segoe UI", 10))
+        style.configure("Header.TLabel", foreground="#ECECEC", font=("Segoe UI", 12, "bold"))
 
         # Caminho do relatório de análise
         self.analysis_report_path = analysis_report_path
@@ -21,12 +27,32 @@ class AnalysisScreen:
         print(f"Caminho do relatório de análise: {self.analysis_report_path}")
 
         # Lista de PDFs que não foram marcados como OK
-        self.pending_files_listbox = Listbox(self.window, width=80, height=20)
-        self.pending_files_listbox.pack(pady=20)
+        self.header_frame = ttk.Frame(self.window, style="TFrame")
+        self.header_frame.pack(pady=10, padx=20, fill='x')
+
+        self.report_label = ttk.Label(self.header_frame,
+                                      text=f"Relatório: {os.path.basename(self.analysis_report_path)}",
+                                      style="Header.TLabel")
+        self.report_label.pack(side='left', padx=5)
+
+        self.date_label = ttk.Label(self.header_frame, text=f"Data: {pd.to_datetime('today').strftime('%d/%m/%Y')}",
+                                    style="Header.TLabel")
+        self.date_label.pack(side='right', padx=5)
+
+        self.pending_files_listbox = Listbox(self.window, width=90, height=25)
+        self.pending_files_listbox.pack(pady=20, padx=10, side='left', fill='y')
+
+        # Frame para visualização do PDF selecionado
+        self.pdf_view_frame = ttk.Frame(self.window, padding="10", borderwidth=2, relief="ridge", style="TFrame")
+        self.pdf_view_frame.pack(pady=10, padx=10, side='right', fill='both', expand=True)
+
+        # Label de visualização do PDF
+        self.pdf_view_label = ttk.Label(self.pdf_view_frame, text="Visualização do PDF Selecionado", style="TLabel")
+        self.pdf_view_label.pack(expand=True, fill='both')
 
         # Botão para abrir arquivo selecionado
         open_button = Button(self.window, text="Abrir PDF Selecionado", command=self.open_selected_pdf)
-        open_button.pack(pady=10)
+        open_button.pack(pady=20)
 
         # Carregar lista de PDFs não marcados como OK
         self.load_pending_files()
@@ -104,3 +130,4 @@ if __name__ == "__main__":
     root.withdraw()  # Oculta a janela principal
     analysis_screen = AnalysisScreen(root, os.path.join(filedialog.askdirectory(), "analysis_report.xlsx"))
     root.mainloop()
+
