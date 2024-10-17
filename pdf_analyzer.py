@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 
 
 class PDFAnalyzer:
-    def __init__(self, min_text_length=10, pixel_threshold=0.985, language='eng+por'):
+    def __init__(self, min_text_length=15, pixel_threshold=0.985, language='eng+por'):
         """
         Inicializa o analisador com parâmetros para OCR e métricas.
 
@@ -18,6 +18,7 @@ class PDFAnalyzer:
             pixel_threshold (float): Limite de proporção de pixels brancos para considerar a página em branco.
             language (str): Idiomas para o Tesseract OCR.
         """
+        print("Inicializando PDFAnalyzer...")
         self.min_text_length = min_text_length
         self.pixel_threshold = pixel_threshold
         self.language = language
@@ -31,6 +32,7 @@ class PDFAnalyzer:
         self.correct_words = 0
         # Inicializa o corretor ortográfico
         self.spell = SpellChecker(language='pt')  # Ajuste o idioma conforme necessário
+        print("PDFAnalyzer inicializado com sucesso.")
 
     def is_blank_or_noisy(self, image):
         """
@@ -113,13 +115,21 @@ class PDFAnalyzer:
             print(f"Texto extraído pelo OCR: {text[:50]}... (truncado)" if len(
                 text) > 50 else f"Texto extraído pelo OCR: {text}")
 
+            # Remove linhas, manchas e ruídos
+            lines = text.splitlines()
+            cleaned_lines = [line for line in lines if len(line.strip()) > 1 and not re.match(r'^[\W_]+$', line)]
+            cleaned_text = ' '.join(cleaned_lines)
+            print(f"Texto limpo após remoção de linhas e ruídos: {cleaned_text[:50]}... (truncado)" if len(
+                cleaned_text) > 50 else f"Texto limpo após remoção de linhas e ruídos: {cleaned_text}")
+
             # Realiza correção ortográfica
-            corrected_text = self.correct_spelling(text)
+            corrected_text = self.correct_spelling(cleaned_text)
             print(f"Texto após correção ortográfica: {corrected_text[:50]}... (truncado)" if len(
                 corrected_text) > 50 else f"Texto após correção ortográfica: {corrected_text}")
 
             # Determina se o OCR foi bem-sucedido com base no comprimento do texto limpo
             ocr_successful = len(corrected_text) >= self.min_text_length
+            print(f"OCR foi bem-sucedido: {ocr_successful}")
             return ocr_successful, corrected_text
 
         except pytesseract.TesseractError as e:
@@ -130,6 +140,7 @@ class PDFAnalyzer:
         """
         Corrige erros ortográficos no texto utilizando SpellChecker.
         """
+        print("Iniciando correção ortográfica...")
         words = text.split()
         corrected_words = []
         for word in words:
@@ -141,9 +152,13 @@ class PDFAnalyzer:
                 correction = self.spell.correction(word)
                 if correction:
                     corrected_words.append(correction)
+                    print(f"Corrigido '{word}' para '{correction}'")
                 else:
                     corrected_words.append(word)
+                    print(f"Nenhuma correção encontrada para '{word}', mantendo original.")
         corrected_text = ' '.join(corrected_words)
+        print(f"Texto após correção ortográfica: {corrected_text[:50]}... (truncado)" if len(
+            corrected_text) > 50 else f"Texto após correção ortográfica: {corrected_text}")
         return corrected_text
 
     def analyze_page(self, img, ground_truth_text=None):
@@ -152,6 +167,7 @@ class PDFAnalyzer:
         Retorna:
             status (str), white_pixel_percentage (float), ocr_performed (bool), extracted_text (str)
         """
+        print("Iniciando análise da página...")
         # Verifica se a página é em branco ou ruidosa
         is_blank, white_pixel_percentage, cropped_img = self.is_blank_or_noisy(img)
         extracted_text = ""
@@ -161,6 +177,7 @@ class PDFAnalyzer:
         if white_pixel_percentage > 0.98:
             # Se a proporção de pixels brancos for maior que 98%, marca como "Blank"
             status = "Blank"
+            print("Página marcada como em branco devido à alta proporção de pixels brancos.")
             self.pages_blank_count += 1
 
             # Realiza OCR na imagem recortada para tentar reclassificar a página
@@ -170,10 +187,13 @@ class PDFAnalyzer:
             # Se o OCR detectar texto relevante, marca como "OK after OCR"
             if ocr_successful:
                 status = "OK after OCR"
+                print("Texto relevante detectado após OCR, página reclassificada como 'OK after OCR'.")
                 self.pages_ocr_analyzed_count += 1
             else:
                 # Caso contrário, marca como "Blank after OCR"
                 status = "Blank after OCR"
+                print("Nenhum texto relevante detectado após OCR, página mantida como 'Blank after OCR'.")
                 self.pages_blank_after_ocr_count += 1
 
+        print(f"Status da página: {status}")
         return status, white_pixel_percentage, ocr_performed, extracted_text
