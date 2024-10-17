@@ -1,11 +1,12 @@
 import os
-from tkinter import Toplevel, Listbox, Button, messagebox, filedialog, ttk, Canvas, Frame
+from tkinter import Toplevel, Listbox, Button, messagebox, filedialog, ttk, Canvas, Frame, Label
 from ttkthemes import ThemedTk
 import pandas as pd
 import pdfplumber
 from PIL import Image, ImageTk
 import fitz  # Importando a biblioteca PyMuPDF para manipulação de PDFs
 import shutil
+import threading
 
 
 class AnalysisScreen:
@@ -57,6 +58,10 @@ class AnalysisScreen:
         # Botão para abrir o diretório dos PDFs analisados
         open_button = Button(self.window, text="Abrir Diretório dos PDFs", command=self.open_pdf_directory)
         open_button.pack(pady=10)
+
+        # Label de loading
+        self.loading_label = Label(self.window, text="", bg="#2B3E50", fg="white", font=("Segoe UI", 10, "bold"))
+        self.loading_label.pack(pady=5)
 
         print("Chamando load_pending_files...")
         self.load_pending_files()
@@ -126,34 +131,41 @@ class AnalysisScreen:
 
         # Confirma a exclusão da página
         if messagebox.askyesno("Confirmação", f"Tem certeza de que deseja deletar a página {self.selected_page_index + 1} de {os.path.basename(self.selected_pdf)}?"):
-            try:
-                print(f"Abrindo PDF {self.selected_pdf} para deletar a página {self.selected_page_index + 1}...")
-                # Abre o PDF e exclui a página
-                with fitz.open(self.selected_pdf) as pdf_document:
-                    if pdf_document.page_count > 1:
-                        pdf_document.delete_page(self.selected_page_index)
+            self.loading_label.config(text="Deletando página, por favor aguarde...")
+            delete_thread = threading.Thread(target=self.perform_delete, args=(selected_index,))
+            delete_thread.start()
 
-                        # Salva o novo arquivo sem a página deletada em um arquivo temporário
-                        temp_pdf_path = self.selected_pdf.replace('.pdf', '_temp.pdf')
-                        pdf_document.save(temp_pdf_path, garbage=4, deflate=True)
-                        print(f"Página deletada e arquivo temporário salvo em {temp_pdf_path}")
+    def perform_delete(self, selected_index):
+        try:
+            print(f"Abrindo PDF {self.selected_pdf} para deletar a página {self.selected_page_index + 1}...")
+            # Abre o PDF e exclui a página
+            with fitz.open(self.selected_pdf) as pdf_document:
+                if pdf_document.page_count > 1:
+                    pdf_document.delete_page(self.selected_page_index)
 
-                        # Substitui o arquivo original pelo temporário
-                        shutil.move(temp_pdf_path, self.selected_pdf)
-                        print(f"Arquivo original substituído pelo arquivo temporário {temp_pdf_path}")
+                    # Salva o novo arquivo sem a página deletada em um arquivo temporário
+                    temp_pdf_path = self.selected_pdf.replace('.pdf', '_temp.pdf')
+                    pdf_document.save(temp_pdf_path, garbage=4, deflate=True)
+                    print(f"Página deletada e arquivo temporário salvo em {temp_pdf_path}")
 
-                        # Atualiza a interface
-                        print(f"Página {self.selected_page_index + 1} deletada com sucesso. Atualizando interface...")
-                        self.pending_files_listbox.delete(selected_index)
-                        self.pdf_canvas.delete("all")  # Limpa o Canvas após a exclusão
-                        messagebox.showinfo("Sucesso",
-                                            f"A página {self.selected_page_index + 1} de {os.path.basename(self.selected_pdf)} foi deletada com sucesso.")
-                    else:
-                        print("Não é possível deletar a única página de um documento PDF.")
-                        messagebox.showwarning("Operação Inválida", "Não é possível deletar a única página de um documento PDF.")
-            except Exception as e:
-                print(f"Erro ao deletar a página do PDF: {str(e)}")
-                messagebox.showerror("Erro", f"Não foi possível deletar a página do PDF: {str(e)}")
+                    # Substitui o arquivo original pelo temporário
+                    shutil.move(temp_pdf_path, self.selected_pdf)
+                    print(f"Arquivo original substituído pelo arquivo temporário {temp_pdf_path}")
+
+                    # Atualiza a interface
+                    print(f"Página {self.selected_page_index + 1} deletada com sucesso. Atualizando interface...")
+                    self.pending_files_listbox.delete(selected_index)
+                    self.pdf_canvas.delete("all")  # Limpa o Canvas após a exclusão
+                    messagebox.showinfo("Sucesso",
+                                        f"A página {self.selected_page_index + 1} de {os.path.basename(self.selected_pdf)} foi deletada com sucesso.")
+                else:
+                    print("Não é possível deletar a única página de um documento PDF.")
+                    messagebox.showwarning("Operação Inválida", "Não é possível deletar a única página de um documento PDF.")
+        except Exception as e:
+            print(f"Erro ao deletar a página do PDF: {str(e)}")
+            messagebox.showerror("Erro", f"Não foi possível deletar a página do PDF: {str(e)}")
+        finally:
+            self.loading_label.config(text="")
 
     def center_image(self, event):
         print("Centralizando imagem no Canvas...")

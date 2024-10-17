@@ -271,10 +271,14 @@ class PDFAnalyzerGUI:
             messagebox.showerror("Erro", "Nenhum relatório de análise encontrado.")
             return
 
-        # Modificado para lidar com diferentes tamanhos de strings antes do timestamp
+        # Ordena os relatórios por data de criação em ordem decrescente para obter o mais recente
         report_files.sort(
-            key=lambda x: datetime.strptime(x.replace("analysis_report_", "").replace(".xlsx", ""), "%Y%m%d_%H%M%S"), reverse=True)
+            key=lambda x: datetime.strptime(x.replace("analysis_report_", "").replace(".xlsx", ""), "%Y%m%d_%H%M%S"),
+            reverse=True)
         analysis_report_path = os.path.join(self.directory, report_files[0])
+
+        # Minimiza a janela principal antes de abrir a nova tela
+        self.window.iconify()
 
         # Cria a tela de análises pendentes
         AnalysisScreen(self.window, analysis_report_path)

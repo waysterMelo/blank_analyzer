@@ -5,11 +5,10 @@ from PIL import Image, ImageEnhance, ImageFilter
 import io
 import pytesseract
 from spellchecker import SpellChecker
-from difflib import SequenceMatcher
 
 
 class PDFAnalyzer:
-    def __init__(self, min_text_length=15, pixel_threshold=0.985, language='eng+por'):
+    def __init__(self, min_text_length=10, pixel_threshold=0.985, language='eng+por'):
         """
         Inicializa o analisador com parâmetros para OCR e métricas.
 
