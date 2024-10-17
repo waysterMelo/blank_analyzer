@@ -13,6 +13,7 @@ import queue
 from pdf_analyzer import PDFAnalyzer
 from report_generator import ReportGenerator
 import time
+from analises import AnalysisScreen
 
 
 class PDFAnalyzerGUI:
@@ -101,7 +102,7 @@ class PDFAnalyzerGUI:
         button_frame.pack(pady=15)
         self.open_folder_button = ttk.Button(button_frame, text="Abrir Pasta do Relatório", command=self.open_folder, width=25)
         self.open_folder_button.grid(row=0, column=0, padx=10)
-        self.open_analise_button = ttk.Button(button_frame, text="Abrir Análises", command="", width=25)
+        self.open_analise_button = ttk.Button(button_frame, text="Abrir Análises", command=self.open_analysis_screen, width=25)
         self.open_analise_button.grid(row=0, column=1, padx=10)
 
         # Frame do canvas para exibir imagens
@@ -256,16 +257,9 @@ class PDFAnalyzerGUI:
             except Exception as e:
                 messagebox.showerror("Erro", f"Não foi possível abrir a pasta: {str(e)}")
 
-    def open_report(self, file_path):
-        # Abre o relatório gerado
-        print(f"Abrindo relatório: {file_path}")
-        try:
-            if platform.system() == "Windows":
-                os.startfile(file_path)
-            elif platform.system() == "Darwin":
-                subprocess.Popen(["open", file_path])
-            elif platform.system() == "Linux":
-                subprocess.Popen(["xdg-open", file_path])
-        except Exception as e:
-            print(f"Erro ao abrir relatório: {e}")
-            messagebox.showerror("Erro ao abrir relatório", f"Não foi possível abrir o relatório: {str(e)}")
+    # Função para abrir a tela de análises pendentes
+    def open_analysis_screen(self):
+        # Caminho do relatório de análise (substitua pelo caminho apropriado)
+        analysis_report_path = os.path.join(self.directory, f"analysis_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx")
+        # Cria a tela de análises pendentes
+        AnalysisScreen(self.window, analysis_report_path)

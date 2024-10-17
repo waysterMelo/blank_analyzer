@@ -186,13 +186,13 @@ class PDFAnalyzer:
 
             # Se o OCR detectar texto relevante, marca como "OK after OCR"
             if ocr_successful:
-                status = "OK after OCR"
-                print("Texto relevante detectado após OCR, página reclassificada como 'OK after OCR'.")
+                status = "OK after reanalysis"
+                print("Texto relevante detectado após OCR, página reclassificada como 'OK after reanalysis'.")
                 self.pages_ocr_analyzed_count += 1
             else:
                 # Caso contrário, marca como "Blank after OCR"
-                status = "Blank after OCR"
-                print("Nenhum texto relevante detectado após OCR, página mantida como 'Blank after OCR'.")
+                status = "Blank after reanalysis"
+                print("Nenhum texto relevante detectado após OCR, página mantida como 'Blank after reanalysis'.")
                 self.pages_blank_after_ocr_count += 1
 
         print(f"Status da página: {status}")
