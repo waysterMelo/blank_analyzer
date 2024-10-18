@@ -8,7 +8,7 @@ from spellchecker import SpellChecker
 
 
 class PDFAnalyzer:
-    def __init__(self, min_text_length=10, pixel_threshold=0.985, language='eng+por'):
+    def __init__(self, min_text_length=20, pixel_threshold=0.98, language='eng+por'):
         """
         Inicializa o analisador com parâmetros para OCR e métricas.
 
@@ -74,11 +74,7 @@ class PDFAnalyzer:
         return is_blank, white_pixel_percentage, cropped_image
 
     def perform_ocr_and_reclassify(self, cropped_image):
-        """
-        Realiza OCR na imagem recortada.
-        Retorna:
-            ocr_successful (bool), cleaned_text (str)
-        """
+
         print("Iniciando o processo de OCR e reclassificação...")
 
         try:
@@ -160,39 +156,40 @@ class PDFAnalyzer:
             corrected_text) > 50 else f"Texto após correção ortográfica: {corrected_text}")
         return corrected_text
 
-    def analyze_page(self, img, ground_truth_text=None):
+    def analyze_page(self, img):
         """
         Analisa a imagem de uma única página do PDF.
         Retorna:
             status (str), white_pixel_percentage (float), ocr_performed (bool), extracted_text (str)
         """
-        print("Iniciando análise da página...")
         # Verifica se a página é em branco ou ruidosa
         is_blank, white_pixel_percentage, cropped_img = self.is_blank_or_noisy(img)
         extracted_text = ""
         ocr_performed = False
         status = "OK"  # Status padrão se a página não for em branco
 
-        if white_pixel_percentage > 0.98:
-            # Se a proporção de pixels brancos for maior que 98%, marca como "Blank"
-            status = "Blank"
-            print("Página marcada como em branco devido à alta proporção de pixels brancos.")
+        if is_blank:
+            # Incrementa o contador de páginas em branco
             self.pages_blank_count += 1
-
-            # Realiza OCR na imagem recortada para tentar reclassificar a página
+            # Realiza OCR na imagem recortada para reclassificar a página
             ocr_successful, extracted_text = self.perform_ocr_and_reclassify(cropped_img)
             ocr_performed = True
 
-            # Se o OCR detectar texto relevante, marca como "OK after OCR"
-            if ocr_successful:
-                status = "OK after reanalysis"
-                print("Texto relevante detectado após OCR, página reclassificada como 'OK after reanalysis'.")
+            # Obtém o número de caracteres do texto extraído
+            quantidade_caracteres = len(extracted_text)
+
+            # Classificação com base nos resultados do OCR
+            if (ocr_successful or quantidade_caracteres >= 20) and white_pixel_percentage <= self.pixel_threshold:
+                # Se o OCR foi bem-sucedido ou houver 20 ou mais caracteres, classifica como tendo conteúdo após reanálise
+                status = "Identificado conteúdo após reanálise"
                 self.pages_ocr_analyzed_count += 1
+            elif quantidade_caracteres <= 15 and white_pixel_percentage >= self.pixel_threshold:
+                # Se houver 15 ou menos caracteres e uma alta porcentagem de pixels brancos, classifica como em branco com texto irrelevante
+                status = "Página em branco após reanálise"
+                self.pages_blank_after_ocr_count += 1
             else:
-                # Caso contrário, marca como "Blank after OCR"
-                status = "Blank after reanalysis"
-                print("Nenhum texto relevante detectado após OCR, página mantida como 'Blank after reanalysis'.")
+                # Caso contrário, classifica como em branco
+                status = "Página em branco"
                 self.pages_blank_after_ocr_count += 1
 
-        print(f"Status da página: {status}")
         return status, white_pixel_percentage, ocr_performed, extracted_text

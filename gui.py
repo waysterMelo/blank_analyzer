@@ -12,7 +12,6 @@ import io
 import queue
 from pdf_analyzer import PDFAnalyzer
 from report_generator import ReportGenerator
-import time
 from analises import AnalysisScreen
 
 
@@ -137,9 +136,6 @@ class PDFAnalyzerGUI:
         pdf_files = [os.path.join(self.directory, f) for f in os.listdir(self.directory) if f.lower().endswith('.pdf')]
         total_pages = sum(fitz.open(pdf_file).page_count for pdf_file in pdf_files)  # Calcula o total de páginas
         total_pages_processed = 0
-
-        start_time = time.time()
-        estimated_time_per_page = 2  # Tempo estimado por página, em segundos (ajuste conforme necessário)
 
         # Itera sobre cada arquivo PDF no diretório
         for pdf_file in pdf_files:
